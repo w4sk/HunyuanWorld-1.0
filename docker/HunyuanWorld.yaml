@@ -113,7 +113,7 @@ dependencies:
       - asttokens==3.0.0
       - async-timeout==5.0.1
       - attrs==25.3.0
-      - av==14.3.0
+      - av==14.2.0  # upstream pinned 14.3.0 (yanked); 14.4.0 ships no cp310 wheel -> 14.2.0 has prebuilt wheels
       - braceexpand==0.1.7
       - cloudpickle==3.1.1
       - colorama==0.4.6
@@ -129,7 +129,7 @@ dependencies:
       - executing==2.2.0
       - facexlib==0.3.0
       - filterpy==1.4.5
-      - flash-attn==2.7.4.post1
+      # - flash-attn==2.7.4.post1   # installed in a dedicated Dockerfile layer (source/wheel build)
       - flatbuffers==25.2.10
       - fonttools==4.57.0
       - frozenlist==1.6.0
@@ -162,7 +162,7 @@ dependencies:
       - matplotlib==3.10.1
       - mdurl==0.1.2
       - multidict==6.4.3
-      - natten==0.14.4
+      # - natten==0.14.4            # installed in a dedicated Dockerfile layer (source build)
       - numba==0.61.2
       - numpy==1.24.1
       - nvidia-cublas-cu12==12.4.5.8
@@ -203,7 +203,7 @@ dependencies:
       - regex==2022.6.2
       - rich==14.0.0
       - safetensors==0.5.3
-      - sageattention==1.0.6
+      # - sageattention==1.0.6      # installed in a dedicated Dockerfile layer (source build)
       - scikit-image==0.24.0
       - scikit-learn==1.6.1
       - scipy==1.15.2
@@ -242,6 +242,6 @@ dependencies:
       - open3d>=0.18.0
       - trimesh>=4.6.1
       - cmake
-      - pytorch3d @ git+https://github.com/facebookresearch/pytorch3d.git
-      - moge @ git+https://github.com/microsoft/MoGe.git
+      # - pytorch3d @ git+https://github.com/facebookresearch/pytorch3d.git  # dedicated Dockerfile layer (CUDA source build)
+      # - moge @ git+https://github.com/microsoft/MoGe.git                   # dedicated Dockerfile layer
 prefix: /opt/conda/envs/HunyuanWorld

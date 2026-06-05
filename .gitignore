@@ -1,3 +1,14 @@
 # Ignore Python bytecode files
 __pycache__/
 *.pyc
+
+# Local secrets / generated artifacts
+.env
+test_results/
+hy3dworld/utils/weights/
+# ZIM ONNX checkpoints (~1.4GB) — fetched locally, not vendored
+ZIM/
+
+# generated 3D assets copied for viewing (not source)
+web/*.glb
+web/*.ply

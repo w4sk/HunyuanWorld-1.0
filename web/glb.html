@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>HunyuanWorld GLB Viewer</title>
+<style>
+  html,body{margin:0;height:100%;background:#1a1a1a;color:#eee;font-family:system-ui,sans-serif;overflow:hidden}
+  #bar{position:fixed;top:0;left:0;right:0;z-index:10;display:flex;gap:8px;align-items:center;flex-wrap:wrap;
+       padding:8px 12px;background:rgba(30,30,30,.92);border-bottom:1px solid #444}
+  #bar input{width:420px;padding:6px 8px;background:#111;color:#eee;border:1px solid #555;border-radius:4px}
+  #bar button{padding:6px 12px;background:#4CAF50;color:#fff;border:0;border-radius:4px;cursor:pointer}
+  #status{font-size:13px;color:#9ad;margin-left:auto}
+  canvas{display:block}
+</style>
+</head>
+<body>
+  <div id="bar">
+    <label>GLB URL:</label>
+    <input id="url" type="text" value="/test_results/sweep/v10_s2024/scene.glb">
+    <button id="load">読込</button>
+    <label><input id="lit" type="checkbox"> ライティング</label>
+    <span id="status">準備完了</span>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/build/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/controls/OrbitControls.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/loaders/GLTFLoader.js"></script>
+  <script>
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x1a1a1a);
+    const camera = new THREE.PerspectiveCamera(60, innerWidth/innerHeight, 0.05, 5000);
+    camera.position.set(0,0,5);
+    const renderer = new THREE.WebGLRenderer({antialias:true});
+    renderer.setPixelRatio(devicePixelRatio); renderer.setSize(innerWidth,innerHeight);
+    document.body.appendChild(renderer.domElement);
+    const controls = new THREE.OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    // lights (used only when "ライティング" is on)
+    const hemi = new THREE.HemisphereLight(0xffffff, 0x444444, 1.1);
+    const dir = new THREE.DirectionalLight(0xffffff, 0.8); dir.position.set(1,2,1);
+    const setStatus = t => document.getElementById('status').textContent = t;
+    const loader = new THREE.GLTFLoader();
+    let root = null;
+
+    function clear(){ if(root){ scene.remove(root); root.traverse(o=>{o.geometry?.dispose?.(); o.material?.dispose?.();}); root=null; } }
+
+    function applyMaterials(lit){
+      if(!root) return;
+      root.traverse(o=>{
+        if(o.isMesh){
+          // HunyuanWorld meshes carry per-vertex color (COLOR_0). Show flat/unlit
+          // by default to match the source look; optional lit mode for shading.
+          o.material = lit
+            ? new THREE.MeshStandardMaterial({vertexColors:true, side:THREE.DoubleSide, roughness:1, metalness:0})
+            : new THREE.MeshBasicMaterial({vertexColors:true, side:THREE.DoubleSide});
+        }
+      });
+    }
+
+    function frame(){
+      const box = new THREE.Box3().setFromObject(root);
+      if(box.isEmpty()) return;
+      const s = box.getBoundingSphere(new THREE.Sphere());
+      controls.target.copy(s.center);
+      camera.position.copy(s.center).add(new THREE.Vector3(0, s.radius*0.15, s.radius*2.2));
+      camera.near = Math.max(s.radius/500, 0.01); camera.far = s.radius*50; camera.updateProjectionMatrix();
+      controls.update();
+    }
+
+    function load(){
+      const url = document.getElementById('url').value.trim();
+      setStatus('読込中… (大きいファイルは時間がかかります)');
+      clear();
+      loader.load(url, (gltf)=>{
+        root = gltf.scene;
+        applyMaterials(document.getElementById('lit').checked);
+        scene.add(root); frame();
+        setStatus('読込完了');
+      }, (e)=>{ if(e.lengthComputable) setStatus(`読込中 ${(e.loaded/1e6).toFixed(0)}/${(e.total/1e6).toFixed(0)} MB`); },
+         (err)=>{ console.error(err); setStatus('読込失敗: '+url); });
+    }
+
+    document.getElementById('load').addEventListener('click', load);
+    document.getElementById('lit').addEventListener('change', (e)=>{
+      if(e.target.checked){ scene.add(hemi); scene.add(dir); } else { scene.remove(hemi); scene.remove(dir); }
+      applyMaterials(e.target.checked);
+    });
+
+    addEventListener('resize', ()=>{ camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth,innerHeight); });
+    (function a(){ requestAnimationFrame(a); controls.update(); renderer.render(scene,camera); })();
+    load(); // auto-load default
+  </script>
+</body>
+</html>

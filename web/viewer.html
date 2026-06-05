@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>HunyuanWorld Mesh Viewer</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #1a1a1a; color: #eee;
+               font-family: system-ui, sans-serif; overflow: hidden; }
+  #bar { position: fixed; top: 0; left: 0; right: 0; z-index: 10;
+         display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+         padding: 8px 12px; background: rgba(30,30,30,.92); border-bottom: 1px solid #444; }
+  #bar input[type=text] { width: 280px; padding: 6px 8px; background: #111; color: #eee;
+         border: 1px solid #555; border-radius: 4px; }
+  #bar button { padding: 6px 12px; background: #4CAF50; color: #fff; border: 0;
+         border-radius: 4px; cursor: pointer; }
+  #bar button:hover { background: #43a047; }
+  #bar label { font-size: 13px; }
+  #status { font-size: 13px; color: #9ad; margin-left: auto; }
+  #hint { font-size: 12px; color: #888; padding: 4px 12px; background: rgba(30,30,30,.92); }
+  canvas { display: block; }
+</style>
+</head>
+<body>
+  <div id="bar">
+    <label>出力フォルダ:</label>
+    <input id="path" type="text" value="test_results/sanity_check">
+    <button id="load">URLから読込</button>
+    <label><input id="drc" type="checkbox"> .drc優先</label>
+    <label style="color:#888">|</label>
+    <label class="upload"><input id="file" type="file" accept=".ply,.drc" multiple style="display:none">
+      <span style="cursor:pointer;color:#4CAF50;">ローカルファイル選択</span></label>
+    <span id="status">準備完了</span>
+  </div>
+  <div id="hint" style="position:fixed;bottom:0;left:0;right:0;z-index:10;">
+    操作: 左ドラッグ=回転 / 右ドラッグ=平行移動 / ホイール=ズーム ・ レイヤーは mesh_layer0..N を自動探索（大きい .ply は読込に時間がかかります）
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/build/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/controls/OrbitControls.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/loaders/PLYLoader.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/loaders/DRACOLoader.js"></script>
+  <script>
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x1a1a1a);
+    const camera = new THREE.PerspectiveCamera(60, innerWidth/innerHeight, 0.05, 5000);
+    camera.position.set(0, 0, 5);
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setPixelRatio(devicePixelRatio);
+    renderer.setSize(innerWidth, innerHeight);
+    document.body.appendChild(renderer.domElement);
+    const controls = new THREE.OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+
+    const plyLoader = new THREE.PLYLoader();
+    const dracoLoader = new THREE.DRACOLoader();
+    dracoLoader.setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/libs/draco/');
+
+    const statusEl = document.getElementById('status');
+    const setStatus = (t) => statusEl.textContent = t;
+
+    function addGeometry(geometry) {
+      if (!geometry.attributes.normal) geometry.computeVertexNormals();
+      const material = new THREE.MeshBasicMaterial({ side: THREE.DoubleSide, vertexColors: true });
+      const mesh = new THREE.Mesh(geometry, material);
+      // HunyuanWorld mesh orientation fix (same as modelviewer.html)
+      mesh.rotateX(-Math.PI / 2);
+      mesh.rotateZ(-Math.PI / 2);
+      scene.add(mesh);
+      return mesh;
+    }
+
+    function clearMeshes() {
+      scene.children.slice().forEach(c => {
+        if (c.isMesh) { c.geometry?.dispose(); c.material?.dispose(); scene.remove(c); }
+      });
+    }
+
+    function frameScene() {
+      const box = new THREE.Box3();
+      scene.traverse(o => { if (o.isMesh) box.expandByObject(o); });
+      if (box.isEmpty()) return;
+      const sphere = box.getBoundingSphere(new THREE.Sphere());
+      controls.target.copy(sphere.center);
+      camera.position.copy(sphere.center).add(new THREE.Vector3(0, sphere.radius*0.2, sphere.radius*2.2));
+      camera.near = Math.max(sphere.radius/500, 0.01);
+      camera.far = sphere.radius * 50;
+      camera.updateProjectionMatrix();
+      controls.update();
+    }
+
+    function fileExists(url) {
+      return fetch(url, { method: 'HEAD' }).then(r => r.ok).catch(() => false);
+    }
+
+    function loadUrl(url) {
+      const isDrc = url.endsWith('.drc');
+      return new Promise((resolve, reject) => {
+        const onLoad = (geom) => { addGeometry(geom); resolve(url); };
+        const onProgress = (e) => {
+          if (e.lengthComputable) setStatus(`読込中 ${url.split('/').pop()} ${(e.loaded/1e6).toFixed(0)}/${(e.total/1e6).toFixed(0)} MB`);
+        };
+        (isDrc ? dracoLoader : plyLoader).load(url, onLoad, onProgress, reject);
+      });
+    }
+
+    async function loadFromPath() {
+      clearMeshes();
+      let base = document.getElementById('path').value.trim().replace(/^\/+|\/+$/g, '');
+      const preferDrc = document.getElementById('drc').checked;
+      const exts = preferDrc ? ['.drc', '.ply'] : ['.ply', '.drc'];
+      let loaded = 0;
+      for (let i = 0; i < 12; i++) {
+        let url = null;
+        for (const ext of exts) {
+          const cand = `/${base}/mesh_layer${i}${ext}`;
+          if (await fileExists(cand)) { url = cand; break; }
+        }
+        if (!url) { if (i === 0) continue; else break; }
+        setStatus(`読込中 layer${i} ...`);
+        try { await loadUrl(url); loaded++; }
+        catch (e) { console.error(e); setStatus(`layer${i} 読込失敗`); }
+      }
+      if (loaded === 0) { setStatus(`メッシュが見つかりません: /${base}/mesh_layer*.ply`); return; }
+      frameScene();
+      setStatus(`${loaded} レイヤー読込完了`);
+    }
+
+    document.getElementById('load').addEventListener('click', loadFromPath);
+
+    // local file fallback (browser-side, for same-machine use)
+    document.getElementById('file').addEventListener('change', (e) => {
+      const files = [...e.target.files];
+      if (!files.length) return;
+      clearMeshes();
+      let done = 0;
+      files.forEach(file => {
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          try {
+            if (file.name.endsWith('.ply')) addGeometry(plyLoader.parse(ev.target.result));
+            else if (file.name.endsWith('.drc')) dracoLoader.decodeDracoFile(ev.target.result, (g) => { addGeometry(g); frameScene(); });
+          } catch (err) { console.error(err); }
+          if (++done === files.length) { frameScene(); setStatus(`${files.length} ファイル読込完了`); }
+        };
+        reader.readAsArrayBuffer(file);
+      });
+    });
+
+    addEventListener('resize', () => {
+      camera.aspect = innerWidth/innerHeight; camera.updateProjectionMatrix();
+      renderer.setSize(innerWidth, innerHeight);
+    });
+    (function animate(){ requestAnimationFrame(animate); controls.update(); renderer.render(scene, camera); })();
+
+    // auto-load default path on open
+    loadFromPath();
+  </script>
+</body>
+</html>

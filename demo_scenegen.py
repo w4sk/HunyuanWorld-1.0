@@ -26,7 +26,11 @@ from hy3dworld.AngelSlim.attention_quantization_processor import FluxFp8AttnProc
 class HYworldDemo:
     def __init__(self, args, seed=42):
         self.args = args
-        target_size = 3840
+        # Lowered from 3840 to fit this 31GB-RAM host: the inpaint+super-resolution
+        # phase (esp. sky) peaks ~72GB (RAM+swap) at 3840 and OOM-kills on layered
+        # runs. 2048 (~native panorama width) cuts intermediate tensors ~3x so it
+        # fits in RAM without swap thrashing. Bump back toward 3840 on a >=64GB host.
+        target_size = 2048
         kernel_scale = max(1, int(target_size / 1920))
 
         self.LayerDecomposer = LayerDecomposition(args)
@@ -38,6 +42,13 @@ class HYworldDemo:
             seed=seed,
             filter_mask=True,
             kernel_scale=kernel_scale,
+            # Lowered mesh resolution from the 3840 default to fit this 31GB-RAM
+            # host: layered scenegen (fg1+fg2+bg+sky) OOM-kills at 3840. This cuts
+            # mesh vertices ~3x -> less RAM at composition AND lighter .ply for the
+            # web viewer. Geometry is coarser; textures stay super-resolved.
+            max_fg_mesh_res=2048,
+            max_bg_mesh_res=2048,
+            max_sky_mesh_res=1920,
         )
 
         if self.args.fp8_attention:
