@@ -28,11 +28,17 @@ services:
       - HF_HOME=/root/.cache/huggingface
       - HUGGING_FACE_HUB_TOKEN=${HF_TOKEN:-}
       - HF_TOKEN=${HF_TOKEN:-}
+      # Set to 1 when weights are pre-staged on a shared/NFS cache (avoids
+      # network/lock checks — recommended for read-only multi-server prod).
+      - HF_HUB_OFFLINE=${HF_HUB_OFFLINE:-0}
     volumes:
       # Live repo — edit on host, runs in container.
       - ./:/workspace
-      # Persist & reuse model weights across runs/rebuilds (FLUX is ~24GB).
-      - ${HOME}/.cache/huggingface:/root/.cache/huggingface
+      # Model weights (~90GB). HF_CACHE_DIR lets prod point this at an NFS/NAS
+      # mount (e.g. /mnt/ai-models/huggingface); defaults to the local HF cache.
+      - ${HF_CACHE_DIR:-${HOME}/.cache/huggingface}:/root/.cache/huggingface
+      # ZIM checkpoints. Defaults to the in-repo copy; override to a shared path.
+      - ${ZIM_DIR:-./ZIM/zim_vit_l_2092}:/workspace/ZIM/zim_vit_l_2092
     command: bash
 
   # Static web viewer for generated meshes (Three.js, loads .ply/.drc by URL).
